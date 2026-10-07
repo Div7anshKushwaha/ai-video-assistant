@@ -30,11 +30,14 @@ def load_model():
         print(f"Loading Whisper model: {WHISPER_MODEL}")
         print(f"Using device: {device}")
 
-        _model = whisper.load_model(WHISPER_MODEL, device=device)
+        _model = whisper.load_model(
+            WHISPER_MODEL,
+            device=device
+        )
 
         print("Whisper model loaded.")
 
-    return _model 
+    return _model
 
 
 def transcribe_chunk_whisper(chunk_path: str) -> str:
