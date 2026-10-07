@@ -1,17 +1,31 @@
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
 from dotenv import load_dotenv
 
-from utils.audio_processor import process_input
-from core.transcriber import transcribe_all
-from core.summarizer import summarize, generate_title
 from core.extractor import (
     extract_action_items,
     extract_key_decisions,
     extract_questions,
 )
-from core.rag_engine import build_rag_chain, ask_question
+from core.rag_engine import ask_question, build_rag_chain
+from core.summarizer import generate_title, summarize
+from core.transcriber import transcribe_all
+from utils.audio_processor import process_input
 
 
 load_dotenv()
+
+LOGGER = logging.getLogger(__name__)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
 
 
 PIPELINE_STEPS = [
@@ -25,101 +39,140 @@ PIPELINE_STEPS = [
     "Building knowledge base",
 ]
 
+SUPPORTED_LANGUAGES = {"english", "hinglish"}
+ProgressCallback = Callable[[int, int, str], None]
+
+
+def _validate_source(source: str) -> str:
+    """Validate and normalize a YouTube URL or local file path."""
+
+    normalized = source.strip()
+
+    if not normalized:
+        raise ValueError(
+            "Input cannot be empty. Provide a YouTube URL or local media file."
+        )
+
+    if normalized.startswith(("http://", "https://")):
+        return normalized
+
+    path = Path(normalized).expanduser()
+
+    if not path.exists():
+        raise FileNotFoundError(f"Input file does not exist: {path}")
+
+    if not path.is_file():
+        raise ValueError(f"Input path is not a file: {path}")
+
+    return str(path)
+
+
+def _validate_language(language: str) -> str:
+    """Validate the transcription language mode."""
+
+    normalized = language.strip().lower() or "english"
+
+    if normalized not in SUPPORTED_LANGUAGES:
+        supported = ", ".join(sorted(SUPPORTED_LANGUAGES))
+        raise ValueError(
+            f"Unsupported language '{language}'. Use one of: {supported}."
+        )
+
+    return normalized
+
 
 def run_pipeline(
     source: str,
     language: str = "english",
-    on_progress=None,
-) -> dict:
+    on_progress: ProgressCallback | None = None,
+) -> dict[str, Any]:
+    """Run the complete video-to-knowledge pipeline.
 
-    def notify(step_index: int):
-        if on_progress:
-            on_progress(
-                step_index,
-                len(PIPELINE_STEPS),
-                PIPELINE_STEPS[step_index],
-            )
+    Parameters
+    ----------
+    source:
+        A public YouTube URL or a path to a local audio/video file.
+    language:
+        Either ``english`` for local Whisper transcription or ``hinglish``
+        for Sarvam speech-to-text translation.
+    on_progress:
+        Optional callback receiving ``(step_index, total_steps, label)``.
 
-    print("\nStarting AI Video Assistant...\n")
+    Returns
+    -------
+    dict[str, Any]
+        Title, transcript, meeting insights, and the RAG chain.
 
-    # =========================================================
-    # STEP 1 — AUDIO PROCESSING
-    # =========================================================
+    Notes
+    -----
+    ``transcribe_all`` removes generated audio chunk files in its ``finally``
+    block. ``process_input`` removes its intermediate WAV file after chunking.
+    """
+
+    source = _validate_source(source)
+    language = _validate_language(language)
+
+    def notify(step_index: int) -> None:
+        label = PIPELINE_STEPS[step_index]
+
+        LOGGER.info("Step %d/%d: %s", step_index + 1, len(PIPELINE_STEPS), label)
+
+        if on_progress is not None:
+            on_progress(step_index, len(PIPELINE_STEPS), label)
+
+    LOGGER.info("Starting AI Video Assistant pipeline")
+    LOGGER.info("Source: %s", source)
+    LOGGER.info("Language: %s", language)
+
+    # ------------------------------------------------------------------
+    # Step 1: Audio processing
+    # ------------------------------------------------------------------
     notify(0)
-
-    print("===== STEP 1: AUDIO PROCESSING =====")
-
     chunks = process_input(source)
 
-    print(f"Created {len(chunks)} audio chunk(s).")
+    if not chunks:
+        raise RuntimeError("Audio processing produced no chunks.")
 
-    # =========================================================
-    # STEP 2 — TRANSCRIPTION
-    # =========================================================
+    LOGGER.info("Created %d audio chunk(s)", len(chunks))
+
+    # ------------------------------------------------------------------
+    # Step 2: Transcription
+    # ------------------------------------------------------------------
     notify(1)
+    transcript = transcribe_all(chunks, language=language)
 
-    print("\n===== STEP 2: TRANSCRIPTION =====")
+    if not transcript.strip():
+        raise RuntimeError(
+            "Transcription completed but returned an empty transcript."
+        )
 
-    transcript = transcribe_all(chunks, language)
+    LOGGER.info("Transcript generated: %d characters", len(transcript))
 
-    print(
-        f"\nRaw transcription (first 300 characters):\n"
-        f"{transcript[:300]}"
-    )
-
-    # =========================================================
-    # STEP 3 — TITLE
-    # =========================================================
+    # ------------------------------------------------------------------
+    # Steps 3–7: Transcript analysis
+    # ------------------------------------------------------------------
     notify(2)
-
-    print("\n===== STEP 3: TITLE =====")
-
     title = generate_title(transcript)
 
-    # =========================================================
-    # STEP 4 — SUMMARY
-    # =========================================================
     notify(3)
-
-    print("\n===== STEP 4: SUMMARY =====")
-
     summary = summarize(transcript)
 
-    # =========================================================
-    # STEP 5 — ACTION ITEMS
-    # =========================================================
     notify(4)
-
-    print("\n===== STEP 5: ACTION ITEMS =====")
-
     action_items = extract_action_items(transcript)
 
-    # =========================================================
-    # STEP 6 — KEY DECISIONS
-    # =========================================================
     notify(5)
-
-    print("\n===== STEP 6: KEY DECISIONS =====")
-
     decisions = extract_key_decisions(transcript)
 
-    # =========================================================
-    # STEP 7 — OPEN QUESTIONS
-    # =========================================================
     notify(6)
-
-    print("\n===== STEP 7: OPEN QUESTIONS =====")
-
     questions = extract_questions(transcript)
 
-    # =========================================================
-    # STEP 8 — RAG
-    # =========================================================
+    # ------------------------------------------------------------------
+    # Step 8: RAG knowledge base
+    # ------------------------------------------------------------------
     notify(7)
-
-    print("\n===== STEP 8: BUILDING RAG =====")
-
     rag_chain = build_rag_chain(transcript)
+
+    LOGGER.info("AI Video Assistant pipeline completed successfully")
 
     return {
         "title": title,
@@ -132,101 +185,59 @@ def run_pipeline(
     }
 
 
-if __name__ == "__main__":
+def _print_results(result: dict[str, Any]) -> None:
+    """Print analysis results in the CLI."""
 
-    # =========================================================
-    # CLI ENTRY POINT
-    # =========================================================
+    print("\n" + "=" * 60)
+    print(f"📌 Title:\n{result['title']}")
+    print(f"\n📋 Summary:\n{result['summary']}")
+    print(f"\n✅ Action Items:\n{result['action_items']}")
+    print(f"\n🔑 Key Decisions:\n{result['key_decisions']}")
+    print(f"\n❓ Open Questions:\n{result['open_questions']}")
+    print("=" * 60)
 
-    source = input(
-        "Enter YouTube URL or local file path: "
-    ).strip()
 
-    language = (
-        input("Language (english/hinglish): ")
-        .strip()
-        .lower()
-        or "english"
-    )
+def _run_cli() -> None:
+    """Run the interactive command-line interface."""
+
+    source = input("Enter YouTube URL or local file path: ").strip()
+    language = input("Language (english/hinglish) [english]: ").strip() or "english"
 
     try:
+        result = run_pipeline(source, language)
+    except KeyboardInterrupt:
+        print("\n\nOperation cancelled.")
+        return
+    except Exception as exc:  # noqa: BLE001 - CLI boundary
+        print(f"\n❌ Pipeline failed: {type(exc).__name__}: {exc}")
+        return
 
-        result = run_pipeline(
-            source,
-            language,
-        )
+    _print_results(result)
 
-        # =====================================================
-        # DISPLAY RESULTS
-        # =====================================================
+    print("\n💬 Chat with the processed video (type 'exit' to quit)\n")
 
-        print("\n" + "=" * 60)
+    rag_chain = result["rag_chain"]
 
-        print(
-            f"📌 Title:\n"
-            f"{result['title']}"
-        )
-
-        print(
-            f"\n📋 Summary:\n"
-            f"{result['summary']}"
-        )
-
-        print(
-            f"\n✅ Action Items:\n"
-            f"{result['action_items']}"
-        )
-
-        print(
-            f"\n🔑 Key Decisions:\n"
-            f"{result['key_decisions']}"
-        )
-
-        print(
-            f"\n❓ Open Questions:\n"
-            f"{result['open_questions']}"
-        )
-
-        print("=" * 60)
-
-        # =====================================================
-        # CHAT WITH MEETING
-        # =====================================================
-
-        print(
-            "\n💬 Chat with your meeting "
-            "(type 'exit' to quit)\n"
-        )
-
-        rag_chain = result["rag_chain"]
-
-        while True:
-
+    while True:
+        try:
             question = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n👋 Goodbye!")
+            break
 
-            if question.lower() in [
-                "exit",
-                "quit",
-                "q",
-            ]:
-                print("\n👋 Goodbye!")
-                break
+        if question.lower() in {"exit", "quit", "q"}:
+            print("\n👋 Goodbye!")
+            break
 
-            if not question:
-                continue
+        if not question:
+            continue
 
-            answer = ask_question(
-                rag_chain,
-                question,
-            )
+        try:
+            answer = ask_question(rag_chain, question)
+            print(f"\n🤖 Assistant: {answer}\n")
+        except Exception as exc:  # noqa: BLE001 - keep the CLI alive
+            print(f"\n⚠️ Could not answer the question: {exc}\n")
 
-            print(
-                f"\n🤖 Assistant: {answer}\n"
-            )
 
-    except Exception as e:
-
-        print(
-            f"\n❌ Pipeline failed:\n"
-            f"{e}"
-        )
+if __name__ == "__main__":
+    _run_cli()
