@@ -112,11 +112,17 @@ def friendly_error(error: Exception, stage: int) -> str:
     # YouTube / yt-dlp errors
     # ---------------------------------------------------------
     if "downloaderror" in msg or "unable to download video" in msg:
+
+        if "sign in to confirm you're not a bot" in msg:
+            return (
+                "YouTube blocked this cloud request because it requires "
+                "bot verification. Please upload the audio/video file instead."
+            )
+
         if "403" in msg:
             return (
                 "YouTube rejected the media download request (HTTP 403). "
-                "The video may still work locally, but YouTube can restrict "
-                "downloads from cloud servers."
+                "Please upload the audio/video file instead."
             )
 
         return (
