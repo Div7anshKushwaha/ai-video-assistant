@@ -104,23 +104,72 @@ def redact(text: str) -> str:
 
 
 def friendly_error(error: Exception, stage: int) -> str:
-    """Turn a raw exception into a message the user can act on.
+    """Turn raw exceptions into useful user-facing messages."""
 
-    `stage` is the 0-based pipeline step that was running (see main.PIPELINE_STEPS).
-    """
     msg = str(error).lower()
-    if any(k in msg for k in ("api key", "unauthorized", "401", "403", "invalid_api_key")):
-        return "An AI service rejected the request. Check the API keys in your .env file."
-    if any(k in msg for k in ("rate limit", "429", "quota")):
-        return "An AI service rate limit was reached. Wait a minute and try again."
+
+    # ---------------------------------------------------------
+    # YouTube / yt-dlp errors
+    # ---------------------------------------------------------
+    if "downloaderror" in msg or "unable to download video" in msg:
+        if "403" in msg:
+            return (
+                "YouTube rejected the media download request (HTTP 403). "
+                "The video may still work locally, but YouTube can restrict "
+                "downloads from cloud servers."
+            )
+
+        return (
+            "YouTube could not be downloaded. "
+            "Make sure the video is public and accessible."
+        )
+
+    # ---------------------------------------------------------
+    # AI API errors
+    # ---------------------------------------------------------
+    if any(
+        k in msg
+        for k in (
+            "api key",
+            "unauthorized",
+            "invalid_api_key",
+        )
+    ):
+        return (
+            "An AI service rejected the request. "
+            "Check the API keys in your Streamlit secrets."
+        )
+
+    if "429" in msg or "rate limit" in msg or "quota" in msg:
+        return (
+            "An AI service rate limit was reached. "
+            "Please wait and try again."
+        )
+
+    # ---------------------------------------------------------
+    # Pipeline stages
+    # ---------------------------------------------------------
     if stage == 0:
-        return ("The audio could not be downloaded or processed. Check that the video is "
-                "public and that FFmpeg is installed.")
+        return (
+            "The audio could not be downloaded or processed. "
+            "Check that the input is valid and FFmpeg is installed."
+        )
+
     if stage == 1:
-        return "Transcription failed. Try a shorter file or a different language setting."
+        return (
+            "Transcription failed. "
+            "Try a shorter file or a different language setting."
+        )
+
     if 2 <= stage <= 6:
-        return "The AI model could not generate this part of the analysis. Try again."
-    return "The knowledge base could not be built from the transcript."
+        return (
+            "The AI model could not generate this part of the analysis. "
+            "Please try again."
+        )
+
+    return (
+        "The knowledge base could not be built from the transcript."
+    )
 
 
 # --------------------------------------------------------------------------

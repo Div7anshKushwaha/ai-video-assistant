@@ -1,5 +1,6 @@
 import whisper
 import os
+import gc
 import requests
 from pydub import AudioSegment
 from dotenv import load_dotenv
@@ -20,6 +21,19 @@ SARVAM_MODEL = os.getenv("SARVAM_STT_MODEL", "saaras:v2.5")
 
 _model = None
 
+def unload_model():
+    global _model
+
+    if _model is not None:
+        del _model
+        _model = None
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        gc.collect()
+
+        print("Whisper model unloaded.")
 
 def load_model():
     global _model
@@ -114,21 +128,43 @@ def transcribe_chunk(chunk_path: str, language: str = "english") -> str:
     return transcribe_chunk_whisper(chunk_path)
 
 
+def cleanup_chunks(chunks: list):
+    for chunk in chunks:
+        try:
+            if os.path.exists(chunk):
+                os.remove(chunk)
+        except OSError as e:
+            print(f"Could not remove {chunk}: {e}")
+
+
 def transcribe_all(chunks: list, language: str = "english") -> str:
 
-    full_transcript = "" 
+    full_transcript = ""
 
     engine = "Sarvam AI" if language.lower() == "hinglish" else "Whisper"
     print(f"Using {engine} for transcription.")
 
-    for i, chunk in enumerate(chunks):  
+    try:
+        for i, chunk in enumerate(chunks):
 
-        print(f"Transcribing chunk {i + 1}/{len(chunks)}...")
+            print(
+                f"Transcribing chunk "
+                f"{i + 1}/{len(chunks)}..."
+            )
 
-        text = transcribe_chunk(chunk, language=language)  
+            text = transcribe_chunk(
+                chunk,
+                language=language
+            )
 
-        full_transcript += text + " "  
+            full_transcript += text + " "
+
+    finally:
+        if language.lower() != "hinglish":
+            unload_model()
+
+        cleanup_chunks(chunks)
 
     print("Transcription complete.")
 
-    return full_transcript.strip()  
+    return full_transcript.strip()
