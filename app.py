@@ -146,6 +146,9 @@ def friendly_error(error: Exception, stage: int) -> str:
             "Check the API keys in your Streamlit secrets."
         )
 
+    # ---------------------------------------------------------
+    # Rate limits
+    # ---------------------------------------------------------
     if "429" in msg or "rate limit" in msg or "quota" in msg:
         return (
             "An AI service rate limit was reached. "
@@ -176,7 +179,6 @@ def friendly_error(error: Exception, stage: int) -> str:
     return (
         "The knowledge base could not be built from the transcript."
     )
-
 
 # --------------------------------------------------------------------------
 # Running the real pipeline with real progress
