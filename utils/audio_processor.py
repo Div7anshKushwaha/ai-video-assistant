@@ -17,53 +17,24 @@ def download_youtube_audio(url: str) -> str:
     )
 
     ydl_opts = {
-    "format": "bestaudio/best",
-
+    "format": "bestaudio[ext=m4a]/bestaudio/best",
     "outtmpl": output_template,
-
     "noplaylist": True,
-
     "quiet": True,
     "no_warnings": True,
-
-    "js_runtimes": {
-        "deno": {}
-    },
-
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["web_embedded"]
-        }
-    },
+    "ignoreerrors": False,
 }
 
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-
-        info = ydl.extract_info(
-            url,
-            download=True
-        )
-
-        downloaded_file = Path(
-            ydl.prepare_filename(info)
-        )
+        info = ydl.extract_info(url, download=True)
+        downloaded_file = Path(ydl.prepare_filename(info))
 
     wav_path = downloaded_file.with_suffix(".wav")
 
-    audio = AudioSegment.from_file(
-        downloaded_file
-    )
-
-    audio = (
-        audio
-        .set_channels(1)
-        .set_frame_rate(16000)
-    )
-
-    audio.export(
-        wav_path,
-        format="wav"
-    )
+    audio = AudioSegment.from_file(downloaded_file)
+    audio = audio.set_channels(1).set_frame_rate(16000)
+    audio.export(wav_path, format="wav")
 
     if downloaded_file.exists():
         downloaded_file.unlink()
