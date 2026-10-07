@@ -17,28 +17,25 @@ def download_youtube_audio(url: str) -> str:
     )
 
     ydl_opts = {
-        "format": "bestaudio/best",
+    "format": "bestaudio/best",
 
-        "outtmpl": output_template,
+    "outtmpl": output_template,
 
-        "noplaylist": True,
+    "noplaylist": True,
 
-        "quiet": True,
-        "no_warnings": True,
+    "quiet": True,
+    "no_warnings": True,
 
-        "js_runtimes": {
-            "deno": {}
-        },
+    "js_runtimes": {
+        "deno": {}
+    },
 
-        # Helps with some YouTube delivery restrictions.
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/154.0.0.0 Safari/537.36"
-            )
-        },
-    }
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android"]
+        }
+    },
+}
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
