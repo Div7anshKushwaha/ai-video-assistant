@@ -1,0 +1,53 @@
+# ==============================
+# UI
+# ==============================
+streamlit
+
+# ==============================
+# Environment
+# ==============================
+python-dotenv
+
+# ==============================
+# YouTube / Audio
+# ==============================
+yt-dlp
+pydub
+
+# ==============================
+# Speech-to-Text
+# ==============================
+openai-whisper
+
+# ==============================
+# PyTorch
+# ==============================
+torch
+torchaudio
+torchvision
+
+# ==============================
+# LLM / LangChain
+# ==============================
+langchain
+langchain-core
+langchain-community
+langchain-groq
+langchain-text-splitters
+
+# ==============================
+# HuggingFace Embeddings
+# ==============================
+langchain-huggingface
+sentence-transformers
+
+# ==============================
+# Vector Database
+# ==============================
+chromadb
+langchain-chroma
+
+# ==============================
+# HTTP
+# ==============================
+requests
